@@ -1,14 +1,15 @@
-from uszipcode import SearchEngine, SimpleZipcode, ComprehensiveZipcode
+from uszipcode import SearchEngine
 import pandas as pd
-import os
-import math
+from sklearn.neighbors import NearestNeighbors
+import numpy as np
 
 def main():
-    # read input file
+    # read input file, rename column containing zip code to ZipCode if necessary
     df = pd.read_csv(r"C:\Users\email\OneDrive\Documents\Python\zip_codes\cluster_data_pregrouping.csv")
-    # rename column containing zip code to ZipCode if necessary
+
     se = SearchEngine()
     zip_df = []
+    bad_zip = []
     for i in df["ZipCode"].dropna().unique():
         row = [i]
         x = se.by_zipcode(i) # x is a SimpleZipCode object
@@ -34,9 +35,13 @@ def main():
         skip = False
         for j in row:
             if j is None:
+                # add ZIPs with missing info to this list to impute them
+                bad_zip.append(row)
                 skip = True
+                break
         if not skip: 
             zip_df.append(row)
+
     # converting data into a dataframe:
     zipped = pd.DataFrame(zip_df, columns=[
         "ZipCode",      "Latitude",             "Longitude",       "BoundNorth",
@@ -44,29 +49,32 @@ def main():
         "LandArea",     "WaterArea",            "Population",      "PopulationDensity", 
         "HousingUnits", "OccupiedHousingUnits", "MedianHomeValue", "MedianHouseholdIncome" 
         ])
+    
+    # for bad zips, give them values of their closest neighbor
+
+    # enter coordinates into model
+    train = pd.read_csv(r"C:\Users\email\OneDrive\Documents\Python\zip_codes\zip_reference.csv", header=None).iloc[1:,1:] 
+    nbrs = NearestNeighbors(n_neighbors=1, algorithm='ball_tree').fit(train.iloc[:,1:3])
+    for i in range(len(bad_zip)):
+        # search for closest coordinates
+        distances, indices = nbrs.kneighbors(np.reshape(bad_zip[i][1:3], (1, -1)))
+        # give bad zip value of closest coordinate
+        bad_zip[i][3:] = train.iloc[indices[0,0],3:] 
+
+    imputed_zips = pd.DataFrame(bad_zip, columns=[
+        "ZipCode",      "Latitude",             "Longitude",       "BoundNorth",
+        "BoundSouth",   "BoundEast",            "BoundWest",       "RadiusInMiles", 
+        "LandArea",     "WaterArea",            "Population",      "PopulationDensity", 
+        "HousingUnits", "OccupiedHousingUnits", "MedianHomeValue", "MedianHouseholdIncome" 
+        ])
+
+    all_zip = pd.concat([zipped, imputed_zips])
+
     # merging with our original data, df
-    output = pd.merge(left = df, right = zipped, how =  'left', on = 'ZipCode')
-    # adding leading 0 to 5 digit CCNs
-    new_output = []
-    for i in output["CCN"]:
-        i = str(i)
-        while(len(i) < 6):
-            i = "0" + i
-        new_output.append(i)
-    output['CCN'] = new_output
-    # Adding extra features from web scraped data, joining using CCN
-    provider_directory_1 = pd.read_csv(r"C:\Users\email\OneDrive\Documents\Python\zip_codes\CMS_provider_directory_all.csv", dtype='string')
-    provider_directory_2 = pd.read_csv(r"C:\Users\email\OneDrive\Documents\Python\zip_codes\CMS_directory_every_provider.csv", dtype='string')
-    # Combining both batches of scraped data into 1 data frame, dropping index column
-    provider_directory = pd.concat([provider_directory_1, provider_directory_2]).drop(columns = ['Unnamed: 0'])
-    # renaming variables to avoid confusion, dropping duplicates
-    provider_directory = provider_directory.rename({'ProviderID' : 'CCN'}, axis = 'columns').drop_duplicates()
-    # dropping all columns with duplicate CCN's EDA revealed they are not 
-    # treated as duplicates due to a different data type for some columns
-    provider_directory = provider_directory[~provider_directory['CCN'].duplicated(keep='first')]
-    output_final = pd.merge(left = output, right = provider_directory, how = "left", on = 'CCN' )
+    output = pd.merge(left = df, right = all_zip, how =  'left', on = 'ZipCode')
+
     # export final file
-    output_final.to_csv("zip_codes\\final_result.csv")
+    output.to_csv("zip_codes\\final_result_2.csv")
 
 if __name__ == '__main__':
     main()

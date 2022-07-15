@@ -1,0 +1,22 @@
+---
+title: "Untitled"
+author: "Prateik Sinha"
+date: '2022-07-14'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+```
+
+```{r include=FALSE}
+zip <- read_csv("~/Python/zip_codes/final_result_2.csv")
+```
+
+```{r}
+zip %>% filter(`ZipCode` == 36202)
+```
